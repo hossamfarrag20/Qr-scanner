@@ -258,13 +258,30 @@ document.addEventListener('DOMContentLoaded', () => {
       if (devices && devices.length) {
         state.cameras = devices;
         elements.cameraSelect.innerHTML = '';
+        
+        // Find back camera by label or fallback to last camera in devices array
+        let backCamera = devices.find(cam => {
+          const label = (cam.label || '').toLowerCase();
+          return label.includes('back') || label.includes('rear') || label.includes('environment') || label.includes('خلف');
+        });
+
+        if (!backCamera && devices.length > 1) {
+          // On mobile devices, rear cameras are usually at the end of the device list
+          backCamera = devices[devices.length - 1];
+        }
+
+        const defaultCam = backCamera || devices[0];
+        state.activeCameraId = defaultCam.id;
+
         devices.forEach((cam, index) => {
           const opt = document.createElement('option');
           opt.value = cam.id;
-          opt.textContent = cam.label || `كاميرا ${index + 1}`;
+          opt.textContent = cam.label || (index === 0 ? 'الكاميرا الأمامية' : `الكاميرا الخلفية ${index}`);
+          if (cam.id === defaultCam.id) {
+            opt.selected = true;
+          }
           elements.cameraSelect.appendChild(opt);
         });
-        state.activeCameraId = devices[0].id;
       } else {
         elements.cameraSelect.innerHTML = '<option value="">لم يتم العثور على كاميرا</option>';
       }
@@ -277,7 +294,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function startCamera() {
     if (!state.scanner) return;
 
-    const cameraId = state.activeCameraId || { facingMode: "environment" };
+    // Default to facingMode environment (rear/back camera) if no specific camera selected
+    const cameraConfig = state.activeCameraId 
+      ? state.activeCameraId 
+      : { facingMode: "environment" };
+
     const config = {
       fps: 15,
       qrbox: { width: 220, height: 220 },
@@ -285,22 +306,28 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     state.scanner.start(
-      cameraId,
+      cameraConfig,
       config,
       (decodedText) => {
         handleScanSuccess(decodedText);
       },
       (errorMessage) => {
-        // quiet fail on every scan attempt frame
+        // quiet fail on frame scan attempts
       }
     ).then(() => {
       state.isCameraScanning = true;
       elements.startCamBtn.style.display = 'none';
       elements.stopCamBtn.style.display = 'inline-flex';
       elements.scannerOverlay.style.display = 'flex';
-      showToast('تم تشغيل الكاميرا بنجاح', 'info');
+      showToast('تم تشغيل الكاميرا الخلفية بنجاح', 'info');
     }).catch(err => {
       console.error("Camera start failure:", err);
+      // Fallback attempt with facingMode environment if specific ID failed
+      if (typeof cameraConfig === 'string') {
+        state.activeCameraId = null;
+        startCamera();
+        return;
+      }
       showToast('تعذر فتح الكاميرا: ' + (err.message || err), 'warning');
     });
   }
