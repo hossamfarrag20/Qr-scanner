@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const state = {
     searchDomain: localStorage.getItem('okland_search_domain') || 'http://localhost:4200',
     replaceDomain: localStorage.getItem('okland_replace_domain') || 'https://okland.me',
-    autoRedirect: localStorage.getItem('okland_auto_redirect') === 'true',
+    autoRedirect: localStorage.getItem('okland_auto_redirect') !== 'false',
     soundBeep: localStorage.getItem('okland_sound_beep') !== 'false',
     scanner: null,
     mediaStream: null,
@@ -113,6 +113,11 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     setupDemoQr();
     initCameraList();
+
+    // Auto-start camera immediately when user opens website
+    setTimeout(() => {
+      startCamera();
+    }, 300);
   }
 
   /* ==================== Settings & UI Rules ==================== */
@@ -563,10 +568,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Auto-redirect check
     if (state.autoRedirect) {
-      showToast('جاري التوجيه التلقائي للرابط الجديد...', 'info');
+      showToast('جاري التوجيه المباشر للرابط...', 'success');
       setTimeout(() => {
         window.location.href = transformedText;
-      }, 700);
+      }, 200);
     }
   }
 
