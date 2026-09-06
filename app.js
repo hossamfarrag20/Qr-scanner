@@ -300,16 +300,31 @@ document.addEventListener('DOMContentLoaded', () => {
       : { facingMode: "environment" };
 
     const config = {
-      fps: 15,
-      qrbox: { width: 220, height: 220 },
-      aspectRatio: 1.0
+      fps: 20, // Faster frame rate for instant recognition
+      qrbox: (viewfinderWidth, viewfinderHeight) => {
+        // Dynamic scan box adapting to mobile screen
+        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+        const boxSize = Math.max(Math.floor(minEdge * 0.75), 180);
+        return { width: boxSize, height: boxSize };
+      },
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true // Native Chrome/Android Barcode API for maximum speed
+      }
     };
 
     state.scanner.start(
       cameraConfig,
       config,
       (decodedText) => {
+        if (state.isProcessingScan) return;
+        state.isProcessingScan = true;
+        
         handleScanSuccess(decodedText);
+
+        // Debounce scan calls by 2 seconds
+        setTimeout(() => {
+          state.isProcessingScan = false;
+        }, 2000);
       },
       (errorMessage) => {
         // quiet fail on frame scan attempts
@@ -319,10 +334,23 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.startCamBtn.style.display = 'none';
       elements.stopCamBtn.style.display = 'inline-flex';
       elements.scannerOverlay.style.display = 'flex';
-      showToast('تم تشغيل الكاميرا الخلفية بنجاح', 'info');
+      showToast('جاري المسح... وجه الكاميرا نحو كود الـ QR', 'info');
+
+      // Enable torch if supported
+      try {
+        const videoTrack = state.scanner.getRunningTrack();
+        if (videoTrack && videoTrack.getCapabilities && videoTrack.getCapabilities().torch) {
+          elements.torchBtn.disabled = false;
+          elements.torchBtn.onclick = () => {
+            state.torchOn = !state.torchOn;
+            videoTrack.applyConstraints({ advanced: [{ torch: state.torchOn }] });
+            elements.torchBtn.style.color = state.torchOn ? '#fbbf24' : '#ffffff';
+          };
+        }
+      } catch (e) {}
     }).catch(err => {
       console.error("Camera start failure:", err);
-      // Fallback attempt with facingMode environment if specific ID failed
+      // Fallback attempt with facingMode environment if specific camera ID failed
       if (typeof cameraConfig === 'string') {
         state.activeCameraId = null;
         startCamera();
@@ -339,6 +367,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.startCamBtn.style.display = 'inline-flex';
         elements.stopCamBtn.style.display = 'none';
         elements.scannerOverlay.style.display = 'none';
+        elements.torchBtn.disabled = true;
       }).catch(err => {
         console.warn("Stop scanner error:", err);
       });
@@ -381,6 +410,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ==================== Domain Switcher Logic ==================== */
   function handleScanSuccess(scannedText) {
+    // Haptic feedback / vibration on mobile
+    if (navigator.vibrate) {
+      navigator.vibrate([100, 50, 100]);
+    }
+
     playBeepSound();
 
     let transformedText = scannedText;
@@ -390,18 +424,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchTarget = state.searchDomain.trim().toLowerCase();
     const replaceTarget = state.replaceDomain.trim();
 
-    // Remove trailing slashes for clean matching
     const searchBase = searchTarget.replace(/\/+$/, '');
     const replaceBase = replaceTarget.replace(/\/+$/, '');
 
-    // Check if scannedText contains searchTarget or searchBase or localhost:4200
+    // Comprehensive replacement checks (localhost:4200, 127.0.0.1:4200, etc.)
     if (scannedText.toLowerCase().includes(searchBase)) {
       transformedText = scannedText.replace(new RegExp(searchBase, 'gi'), replaceBase);
       isDomainReplaced = true;
     } else if (scannedText.toLowerCase().includes('localhost:4200')) {
-      // Fallback match for localhost:4200 variants
       transformedText = scannedText.replace(/https?:\/\/localhost:4200/gi, replaceBase);
       transformedText = transformedText.replace(/localhost:4200/gi, replaceBase.replace(/^https?:\/\//, ''));
+      isDomainReplaced = true;
+    } else if (scannedText.toLowerCase().includes('127.0.0.1:4200')) {
+      transformedText = scannedText.replace(/https?:\/\/127\.0\.0\.1:4200/gi, replaceBase);
+      transformedText = transformedText.replace(/127\.0\.0\.1:4200/gi, replaceBase.replace(/^https?:\/\//, ''));
       isDomainReplaced = true;
     }
 
@@ -419,24 +455,28 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isDomainReplaced) {
       elements.replacedFlag.style.display = 'inline-block';
       elements.replacedFlag.textContent = 'تم استبدال الدومين تلقائياً';
+      elements.replacedFlag.className = 'badge badge-warning';
     } else {
       elements.replacedFlag.style.display = 'inline-block';
       elements.replacedFlag.textContent = 'نفس النطاق بدون استبدال';
-      elements.replacedFlag.className = 'badge badge-warning';
+      elements.replacedFlag.className = 'badge badge-success';
     }
 
     // Set href for Open Link button
     elements.openLinkBtn.href = transformedText;
+
+    // Smooth scroll down to result card on mobile so user immediately sees the result
+    elements.resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
     // Add to history
     saveToHistory(scannedText, transformedText, isDomainReplaced);
 
     // Auto-redirect check
     if (state.autoRedirect) {
-      showToast('جاري التوجيه التلقائي...', 'info');
+      showToast('جاري التوجيه التلقائي للرابط الجديد...', 'info');
       setTimeout(() => {
-        window.open(transformedText, '_blank');
-      }, 800);
+        window.location.href = transformedText;
+      }, 700);
     }
   }
 

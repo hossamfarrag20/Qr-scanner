@@ -348,7 +348,7 @@ body {
 #qrReader video {
   width: 100% !important;
   height: 100% !important;
-  object-fit: cover !alignment;
+  object-fit: cover;
 }
 
 /* Overlay Scanner Animations */
