@@ -1,15 +1,12 @@
 /**
- * Okland QR Switcher - Ultra 60 FPS Native Camera Engine Logic
- * Automatically scans QR codes and replaces specified domain (e.g. localhost:4200 -> okland.me)
+ * OKLAND WARRANTY SYSTEM - QR Scanner & Instant Redirect Logic
  */
 
 document.addEventListener('DOMContentLoaded', () => {
   // Application State
   const state = {
-    searchDomain: localStorage.getItem('okland_search_domain') || 'http://localhost:4200',
-    replaceDomain: localStorage.getItem('okland_replace_domain') || 'https://okland.me',
-    autoRedirect: localStorage.getItem('okland_auto_redirect') !== 'false',
-    soundBeep: localStorage.getItem('okland_sound_beep') !== 'false',
+    searchDomain: 'http://localhost:4200',
+    replaceDomain: 'https://okland.me',
     scanner: null,
     mediaStream: null,
     animFrameId: null,
@@ -25,17 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // DOM Elements
   const elements = {
-    // Badges & Settings Modal
-    ruleBadgeBtn: document.getElementById('ruleBadgeBtn'),
-    settingsModal: document.getElementById('settingsModal'),
-    closeSettingsModal: document.getElementById('closeSettingsModal'),
-    searchDomainInput: document.getElementById('searchDomainInput'),
-    replaceDomainInput: document.getElementById('replaceDomainInput'),
-    autoRedirectToggle: document.getElementById('autoRedirectToggle'),
-    soundBeepToggle: document.getElementById('soundBeepToggle'),
-    saveSettingsBtn: document.getElementById('saveSettingsBtn'),
-    resetSettingsBtn: document.getElementById('resetSettingsBtn'),
-
     // Tabs
     tabCameraBtn: document.getElementById('tabCameraBtn'),
     tabUploadBtn: document.getElementById('tabUploadBtn'),
@@ -61,34 +47,10 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadedFileName: document.getElementById('uploadedFileName'),
     clearFileBtn: document.getElementById('clearFileBtn'),
 
-    // Results
-    resultCard: document.getElementById('resultCard'),
-    statusPill: document.getElementById('statusPill'),
-    emptyResultState: document.getElementById('emptyResultState'),
-    resultDetails: document.getElementById('resultDetails'),
-    originalUrlDisplay: document.getElementById('originalUrlDisplay'),
-    transformedUrlDisplay: document.getElementById('transformedUrlDisplay'),
-    replacedFlag: document.getElementById('replacedFlag'),
-    openLinkBtn: document.getElementById('openLinkBtn'),
-    copyLinkBtn: document.getElementById('copyLinkBtn'),
-    generateQrBtn: document.getElementById('generateQrBtn'),
-
-    // Demo QR Generator
-    demoQrCanvas: document.getElementById('demoQrCanvas'),
-    scanDemoQrBtn: document.getElementById('scanDemoQrBtn'),
-    downloadDemoQrBtn: document.getElementById('downloadDemoQrBtn'),
-
     // History
     historyEmpty: document.getElementById('historyEmpty'),
     historyList: document.getElementById('historyList'),
     clearHistoryBtn: document.getElementById('clearHistoryBtn'),
-
-    // QR Modal
-    qrModal: document.getElementById('qrModal'),
-    closeQrModal: document.getElementById('closeQrModal'),
-    generatedQrContainer: document.getElementById('generatedQrContainer'),
-    qrModalUrlText: document.getElementById('qrModalUrlText'),
-    downloadQrBtn: document.getElementById('downloadQrBtn'),
 
     // Audio & Toasts
     beepAudio: document.getElementById('beepAudio'),
@@ -108,10 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 
   function initApp() {
-    updateSettingsUI();
     renderHistory();
     setupEventListeners();
-    setupDemoQr();
     initCameraList();
 
     // Auto-start camera immediately when user opens website
@@ -120,49 +80,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 300);
   }
 
-  /* ==================== Settings & UI Rules ==================== */
-  function updateSettingsUI() {
-    elements.searchDomainInput.value = state.searchDomain;
-    elements.replaceDomainInput.value = state.replaceDomain;
-    elements.autoRedirectToggle.checked = state.autoRedirect;
-    elements.soundBeepToggle.checked = state.soundBeep;
-
-    // Update rule badge text
-    const oldDisplay = state.searchDomain.replace(/^https?:\/\//, '');
-    const newDisplay = state.replaceDomain.replace(/^https?:\/\//, '');
-    elements.ruleBadgeBtn.querySelector('.rule-text').innerHTML = 
-      `<code class="old-domain">${oldDisplay}</code> ➔ <code class="new-domain">${newDisplay}</code>`;
-  }
-
-  function saveSettings() {
-    state.searchDomain = elements.searchDomainInput.value.trim() || 'http://localhost:4200';
-    state.replaceDomain = elements.replaceDomainInput.value.trim() || 'https://okland.me';
-    state.autoRedirect = elements.autoRedirectToggle.checked;
-    state.soundBeep = elements.soundBeepToggle.checked;
-
-    localStorage.setItem('okland_search_domain', state.searchDomain);
-    localStorage.setItem('okland_replace_domain', state.replaceDomain);
-    localStorage.setItem('okland_auto_redirect', state.autoRedirect);
-    localStorage.setItem('okland_sound_beep', state.soundBeep);
-
-    updateSettingsUI();
-    closeModal(elements.settingsModal);
-    showToast('تم حفظ الإعدادات بنجاح!', 'success');
-  }
-
   /* ==================== Event Listeners ==================== */
   function setupEventListeners() {
-    // Settings modal triggers
-    elements.ruleBadgeBtn.addEventListener('click', () => openModal(elements.settingsModal));
-    elements.closeSettingsModal.addEventListener('click', () => closeModal(elements.settingsModal));
-    elements.saveSettingsBtn.addEventListener('click', saveSettings);
-    elements.resetSettingsBtn.addEventListener('click', () => {
-      elements.searchDomainInput.value = 'http://localhost:4200';
-      elements.replaceDomainInput.value = 'https://okland.me';
-      elements.autoRedirectToggle.checked = false;
-      elements.soundBeepToggle.checked = true;
-    });
-
     // Tab buttons
     elements.tabCameraBtn.addEventListener('click', () => switchTab('camera'));
     elements.tabUploadBtn.addEventListener('click', () => switchTab('upload'));
@@ -211,45 +130,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.clearFileBtn.addEventListener('click', resetFileUpload);
 
-    // Results Quick Actions
-    elements.copyLinkBtn.addEventListener('click', () => {
-      if (state.currentTransformedUrl) {
-        navigator.clipboard.writeText(state.currentTransformedUrl).then(() => {
-          showToast('تم نسخ الرابط الجديد للحافظة!', 'success');
-        }).catch(() => {
-          showToast('تعذر النسخ التلقائي، يمكنك نسخه يدويًا', 'warning');
-        });
-      }
-    });
-
-    elements.generateQrBtn.addEventListener('click', () => {
-      if (state.currentTransformedUrl) {
-        openQrModal(state.currentTransformedUrl);
-      }
-    });
-
-    elements.closeQrModal.addEventListener('click', () => closeModal(elements.qrModal));
-    elements.downloadQrBtn.addEventListener('click', downloadGeneratedQr);
-
     // History Actions
     elements.clearHistoryBtn.addEventListener('click', clearHistory);
-
-    // Demo Actions
-    elements.scanDemoQrBtn.addEventListener('click', () => {
-      const demoUrl = 'http://localhost:4200/activate-warranty/1753d501cbe9c462d1bfc905ab6927f9';
-      handleScanSuccess(demoUrl);
-      showToast('تم مسح الـ QR التجريبي بنجاح!', 'info');
-    });
-
-    elements.downloadDemoQrBtn.addEventListener('click', () => {
-      const img = elements.demoQrCanvas.querySelector('img');
-      if (img) {
-        const a = document.createElement('a');
-        a.href = img.src;
-        a.download = 'demo-localhost-qr.png';
-        a.click();
-      }
-    });
   }
 
   /* ==================== Tabs Switcher ==================== */
@@ -334,20 +216,18 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.cameraVideo.style.display = 'block';
       elements.qrReader.style.display = 'none';
 
-      // Request continuous focus track capabilities if available on mobile
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack && videoTrack.applyConstraints) {
         videoTrack.applyConstraints({
           advanced: [{ focusMode: "continuous" }]
         }).catch(() => {});
 
-        // Enable Flash / Torch button if supported
         if (videoTrack.getCapabilities && videoTrack.getCapabilities().torch) {
           elements.torchBtn.disabled = false;
           elements.torchBtn.onclick = () => {
             state.torchOn = !state.torchOn;
             videoTrack.applyConstraints({ advanced: [{ torch: state.torchOn }] });
-            elements.torchBtn.style.color = state.torchOn ? '#fbbf24' : '#ffffff';
+            elements.torchBtn.style.color = state.torchOn ? '#ff9f1c' : '#ffffff';
           };
         }
       }
@@ -357,9 +237,7 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.startCamBtn.style.display = 'none';
       elements.stopCamBtn.style.display = 'inline-flex';
       elements.scannerOverlay.style.display = 'flex';
-      showToast('الماسح الفائق (60 FPS) نشط وخالي من التأخير!', 'info');
 
-      // Start 60 FPS Detection Loop
       startUltraScanLoop();
 
     } catch (err) {
@@ -379,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         let detectedResult = null;
 
-        // Engine A: Hardware BarcodeDetector API (Android Chrome GPU/NPU - microsecond response)
+        // Engine A: Hardware BarcodeDetector API
         if (state.barcodeDetector && !state.isProcessingScan) {
           try {
             const barcodes = await state.barcodeDetector.detect(video);
@@ -389,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
           } catch (e) {}
         }
 
-        // Engine B: High Speed jsQR WASM/JS Engine (Full frame 1080p analysis)
+        // Engine B: High Speed jsQR WASM/JS Engine
         if (!detectedResult && window.jsQR && !state.isProcessingScan) {
           canvas.width = video.videoWidth || 640;
           canvas.height = video.videoHeight || 480;
@@ -475,7 +353,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const file = elements.qrFileInput.files[0];
     if (!file) return;
 
-    // Show image preview
     const reader = new FileReader();
     reader.onload = (e) => {
       elements.uploadedImgPreview.src = e.target.result;
@@ -484,14 +361,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     reader.readAsDataURL(file);
 
-    // Scan file using Html5Qrcode
     if (state.scanner) {
       state.scanner.scanFile(file, true)
         .then(decodedText => {
           handleScanSuccess(decodedText);
-          showToast('تم تحليل الـ QR من الصورة بنجاح!', 'success');
+          showToast('تم تحليل الـ QR بنجاح!', 'success');
         })
-        .catch(err => {
+        .catch(() => {
           showToast('لم يتم العثور على كود QR صالح في الصورة', 'warning');
         });
     }
@@ -503,9 +379,8 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.uploadedImgPreview.src = '';
   }
 
-  /* ==================== Domain Switcher Logic ==================== */
+  /* ==================== Domain Switcher Logic & Direct Redirection ==================== */
   function handleScanSuccess(scannedText) {
-    // Haptic feedback / vibration on mobile
     if (navigator.vibrate) {
       navigator.vibrate([100, 50, 100]);
     }
@@ -515,18 +390,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let transformedText = scannedText;
     let isDomainReplaced = false;
 
-    // Normalize search & replace strings
-    const searchTarget = state.searchDomain.trim().toLowerCase();
-    const replaceTarget = state.replaceDomain.trim();
+    const searchBase = 'http://localhost:4200';
+    const replaceBase = 'https://okland.me';
 
-    const searchBase = searchTarget.replace(/\/+$/, '');
-    const replaceBase = replaceTarget.replace(/\/+$/, '');
-
-    // Comprehensive replacement checks (localhost:4200, 127.0.0.1:4200, etc.)
-    if (scannedText.toLowerCase().includes(searchBase)) {
-      transformedText = scannedText.replace(new RegExp(searchBase, 'gi'), replaceBase);
-      isDomainReplaced = true;
-    } else if (scannedText.toLowerCase().includes('localhost:4200')) {
+    if (scannedText.toLowerCase().includes('localhost:4200')) {
       transformedText = scannedText.replace(/https?:\/\/localhost:4200/gi, replaceBase);
       transformedText = transformedText.replace(/localhost:4200/gi, replaceBase.replace(/^https?:\/\//, ''));
       isDomainReplaced = true;
@@ -537,56 +404,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     state.currentTransformedUrl = transformedText;
-
-    // Update UI Results
-    elements.emptyResultState.style.display = 'none';
-    elements.resultDetails.style.display = 'flex';
-    elements.statusPill.textContent = 'تم القراءة بنجاح';
-    elements.statusPill.className = 'status-pill success';
-
-    elements.originalUrlDisplay.textContent = scannedText;
-    elements.transformedUrlDisplay.textContent = transformedText;
-
-    if (isDomainReplaced) {
-      elements.replacedFlag.style.display = 'inline-block';
-      elements.replacedFlag.textContent = 'تم استبدال الدومين تلقائياً';
-      elements.replacedFlag.className = 'badge badge-warning';
-    } else {
-      elements.replacedFlag.style.display = 'inline-block';
-      elements.replacedFlag.textContent = 'نفس النطاق بدون استبدال';
-      elements.replacedFlag.className = 'badge badge-success';
-    }
-
-    // Set href for Open Link button
-    elements.openLinkBtn.href = transformedText;
-
-    // Smooth scroll down to result card on mobile so user immediately sees the result
-    elements.resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-    // Add to history
     saveToHistory(scannedText, transformedText, isDomainReplaced);
 
-    // Auto-redirect check
-    if (state.autoRedirect) {
-      showToast('جاري التوجيه المباشر للرابط...', 'success');
-      setTimeout(() => {
-        window.location.href = transformedText;
-      }, 200);
-    }
-  }
+    showToast('تم القراءة بنجاح! جاري التوجيه الفوري...', 'success');
 
-  /* ==================== Demo QR Code Generator ==================== */
-  function setupDemoQr() {
-    const demoUrl = 'http://localhost:4200/activate-warranty/1753d501cbe9c462d1bfc905ab6927f9';
-    elements.demoQrCanvas.innerHTML = '';
-    new QRCode(elements.demoQrCanvas, {
-      text: demoUrl,
-      width: 130,
-      height: 130,
-      colorDark: "#0f172a",
-      colorLight: "#ffffff",
-      correctLevel: QRCode.CorrectLevel.H
-    });
+    // Instant Direct Redirect
+    setTimeout(() => {
+      window.location.href = transformedText;
+    }, 200);
   }
 
   /* ==================== History Management ==================== */
@@ -633,8 +458,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <span class="history-time">${item.timestamp}</span>
         </div>
         <div class="history-actions">
-          <a href="${item.transformed}" target="_blank" class="btn btn-sm btn-outline-primary" title="فتح"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
-          <button class="btn btn-sm btn-outline-secondary copy-hist-btn" data-url="${item.transformed}" title="نسخ"><i class="fa-solid fa-copy"></i></button>
+          <a href="${item.transformed}" class="btn btn-sm btn-primary" title="فتح"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+          <button class="btn btn-sm btn-secondary copy-hist-btn" data-url="${item.transformed}" title="نسخ"><i class="fa-solid fa-copy"></i></button>
           <button class="btn btn-sm btn-outline-danger delete-hist-btn" data-id="${item.id}" title="حذف"><i class="fa-solid fa-xmark"></i></button>
         </div>
       `;
@@ -671,43 +496,8 @@ document.addEventListener('DOMContentLoaded', () => {
     return str.length > len ? str.substring(0, len) + '...' : str;
   }
 
-  /* ==================== QR Generator Modal ==================== */
-  function openQrModal(url) {
-    elements.generatedQrContainer.innerHTML = '';
-    elements.qrModalUrlText.textContent = url;
-
-    new QRCode(elements.generatedQrContainer, {
-      text: url,
-      width: 200,
-      height: 200,
-      colorDark: "#0f172a",
-      colorLight: "#ffffff",
-      correctLevel: QRCode.CorrectLevel.H
-    });
-
-    openModal(elements.qrModal);
-  }
-
-  function downloadGeneratedQr() {
-    const img = elements.generatedQrContainer.querySelector('img');
-    const canvas = elements.generatedQrContainer.querySelector('canvas');
-
-    let dataUrl = null;
-    if (img && img.src) dataUrl = img.src;
-    else if (canvas) dataUrl = canvas.toDataURL("image/png");
-
-    if (dataUrl) {
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = 'okland-qr-code.png';
-      a.click();
-      showToast('تم تحميل صورة الـ QR الجديدة!', 'success');
-    }
-  }
-
-  /* ==================== Sound & Modals Helpers ==================== */
+  /* ==================== Audio Helpers ==================== */
   function playBeepSound() {
-    if (!state.soundBeep) return;
     try {
       if (elements.beepAudio) {
         elements.beepAudio.currentTime = 0;
@@ -735,21 +525,10 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {}
   }
 
-  function openModal(modalEl) {
-    modalEl.classList.add('active');
-  }
-
-  function closeModal(modalEl) {
-    modalEl.classList.remove('active');
-  }
-
   function showToast(message, type = 'info') {
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    let icon = 'fa-circle-info';
-    if (type === 'success') icon = 'fa-circle-check';
-    if (type === 'warning') icon = 'fa-triangle-exclamation';
-
+    let icon = type === 'success' ? 'fa-circle-check' : 'fa-circle-info';
     toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
     elements.toastContainer.appendChild(toast);
 
