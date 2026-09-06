@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ماسح الـ QR الذكي - Okland QR Switcher</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- CSS Styles -->
+  <link rel="stylesheet" href="styles.css">
+  <!-- HTML5-QRCode Scanner Library -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- QRCode JS Generator Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+  <div class="background-glow">
+    <div class="glow-sphere glow-1"></div>
+    <div class="glow-sphere glow-2"></div>
+  </div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-box">
+        <div class="logo-icon">
+          <i class="fa-solid fa-qrcode"></i>
+        </div>
+        <div class="logo-text">
+          <h1>Okland <span>QR Switcher</span></h1>
+          <p>ماسح الكود الذكي ومبدّل النطاقات التلقائي</p>
+        </div>
+      </div>
+      <div class="rule-badge" id="ruleBadgeBtn">
+        <span class="pulse-dot"></span>
+        <span class="rule-text">استبدال تلقائي: <code class="old-domain">localhost:4200</code> ➔ <code class="new-domain">okland.me</code></span>
+        <i class="fa-solid fa-sliders"></i>
+      </div>
+    </header>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal">
+      <div class="modal-content glass-card">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-gear"></i> إعدادات تبديل النطاقات</h3>
+          <button class="close-btn" id="closeSettingsModal"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="searchDomainInput">النطاق المطلوب استبداله (القديم):</label>
+            <div class="input-icon-wrapper">
+              <i class="fa-solid fa-globe"></i>
+              <input type="text" id="searchDomainInput" value="http://localhost:4200" placeholder="مثال: http://localhost:4200">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="replaceDomainInput">النطاق الجديد (البديل):</label>
+            <div class="input-icon-wrapper">
+              <i class="fa-solid fa-link"></i>
+              <input type="text" id="replaceDomainInput" value="https://okland.me" placeholder="مثال: https://okland.me">
+            </div>
+          </div>
+          <div class="form-group toggle-group">
+            <label for="autoRedirectToggle">
+              <input type="checkbox" id="autoRedirectToggle">
+              <span class="custom-toggle"></span>
+              التوجيه التلقائي مباشرة بعد المسح إلى الرابط الجديد
+            </label>
+          </div>
+          <div class="form-group toggle-group">
+            <label for="soundBeepToggle">
+              <input type="checkbox" id="soundBeepToggle" checked>
+              <span class="custom-toggle"></span>
+              تشغيل صوت تنبيه (Beep) عند قراءة الـ QR
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="resetSettingsBtn">إعادة ضبط</button>
+          <button class="btn btn-primary" id="saveSettingsBtn"><i class="fa-solid fa-check"></i> حفظ التغييرات</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content Layout -->
+    <main class="main-grid">
+      <!-- Left Column: Scanner Box -->
+      <section class="scanner-section glass-card">
+        <!-- Scan Method Tabs -->
+        <div class="tab-buttons">
+          <button class="tab-btn active" id="tabCameraBtn">
+            <i class="fa-solid fa-camera"></i> الكاميرا المباشرة
+          </button>
+          <button class="tab-btn" id="tabUploadBtn">
+            <i class="fa-solid fa-file-arrow-up"></i> رفع صورة QR
+          </button>
+        </div>
+
+        <!-- Camera Container -->
+        <div class="scan-view" id="cameraView">
+          <div class="camera-controls">
+            <select id="cameraSelect" class="custom-select">
+              <option value="">جاري البحث عن الكاميرات...</option>
+            </select>
+            <button id="torchBtn" class="icon-btn" title="الفلاش / الإضاءة" disabled>
+              <i class="fa-solid fa-bolt"></i>
+            </button>
+          </div>
+
+          <div class="reader-wrapper">
+            <div id="qrReader"></div>
+            <div class="scanner-overlay" id="scannerOverlay">
+              <div class="scanner-frame">
+                <div class="corner corner-tl"></div>
+                <div class="corner corner-tr"></div>
+                <div class="corner corner-bl"></div>
+                <div class="corner corner-br"></div>
+                <div class="scan-line"></div>
+              </div>
+              <p class="scan-hint">ضع كود الـ QR داخل الإطار للمسح</p>
+            </div>
+          </div>
+
+          <div class="camera-actions">
+            <button class="btn btn-primary" id="startCamBtn"><i class="fa-solid fa-play"></i> تشغيل الكاميرا</button>
+            <button class="btn btn-danger" id="stopCamBtn" style="display:none;"><i class="fa-solid fa-stop"></i> إيقاف الكاميرا</button>
+          </div>
+        </div>
+
+        <!-- File Upload Container -->
+        <div class="scan-view" id="uploadView" style="display: none;">
+          <div class="upload-dropzone" id="dropzone">
+            <input type="file" id="qrFileInput" accept="image/*" style="display: none;">
+            <div class="dropzone-content">
+              <div class="upload-icon">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+              </div>
+              <h3>إسقاط صورة QR هنا أو اضغط للتصفح</h3>
+              <p>يدعم صيغ JPG, PNG, WEBP, GIF</p>
+              <button class="btn btn-secondary" id="browseFileBtn"><i class="fa-solid fa-folder-open"></i> اختيار ملف صورة</button>
+            </div>
+          </div>
+          <div id="filePreviewBox" class="file-preview-box" style="display: none;">
+            <img id="uploadedImgPreview" src="" alt="QR Preview">
+            <div class="preview-info">
+              <span id="uploadedFileName">image.png</span>
+              <button class="btn btn-sm btn-outline-danger" id="clearFileBtn"><i class="fa-solid fa-trash"></i> حذف</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Results & Interactive Quick Test -->
+      <section class="result-section">
+        <!-- Scan Result Card -->
+        <div class="glass-card result-card" id="resultCard">
+          <div class="result-header">
+            <h2><i class="fa-solid fa-square-poll-vertical"></i> نتيجة المسح</h2>
+            <span class="status-pill idle" id="statusPill">في انتظار المسح...</span>
+          </div>
+
+          <div class="result-body" id="resultBody">
+            <div class="empty-state" id="emptyResultState">
+              <i class="fa-solid fa-qrcode empty-icon"></i>
+              <p>قم بمسح QR code عبر الكاميرا أو رفع صورة لعرض النتيجة وتحويل الرابط تلقائيًا.</p>
+            </div>
+
+            <div class="result-details" id="resultDetails" style="display: none;">
+              <!-- Original Link Box -->
+              <div class="url-box original-box">
+                <div class="url-label">
+                  <span><i class="fa-solid fa-link-slash"></i> الرابط الأصلي الممسوح:</span>
+                  <span class="badge badge-warning" id="replacedFlag">تم تغيير الدومين</span>
+                </div>
+                <div class="url-content" id="originalUrlDisplay">http://localhost:4200/...</div>
+              </div>
+
+              <!-- Arrow Switcher visual -->
+              <div class="switch-arrow">
+                <i class="fa-solid fa-arrow-down-long"></i>
+              </div>
+
+              <!-- Transformed Link Box -->
+              <div class="url-box transformed-box">
+                <div class="url-label">
+                  <span><i class="fa-solid fa-circle-check"></i> الرابط الجديد المعتمد (Okland):</span>
+                  <span class="badge badge-success">جاهز للاستخدام</span>
+                </div>
+                <div class="url-content highlight-url" id="transformedUrlDisplay">https://okland.me/...</div>
+              </div>
+
+              <!-- Actions -->
+              <div class="action-buttons">
+                <a href="#" target="_blank" class="btn btn-glow btn-lg" id="openLinkBtn">
+                  <i class="fa-solid fa-arrow-up-right-from-square"></i> فتح الرابط الآن
+                </a>
+                <button class="btn btn-secondary btn-lg" id="copyLinkBtn">
+                  <i class="fa-solid fa-copy"></i> نسخ الرابط
+                </button>
+                <button class="btn btn-outline" id="generateQrBtn">
+                  <i class="fa-solid fa-qrcode"></i> توليد QR للرابط الجديد
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Demo Tester Card -->
+        <div class="glass-card demo-card">
+          <div class="demo-header">
+            <h3><i class="fa-solid fa-vial-circle-check"></i> منطقة اختبار سريع (Demo QR Generator)</h3>
+            <p>يمكنك تجربة النظام فورًا باستخدام هذا الـ QR المولد لرابط الضمان الخاص بك!</p>
+          </div>
+          <div class="demo-body">
+            <div class="demo-qr-box">
+              <div id="demoQrCanvas"></div>
+              <div class="demo-url-info">
+                <code>http://localhost:4200/activate-warranty/1753d501cbe9c462d1bfc905ab6927f9</code>
+              </div>
+            </div>
+            <div class="demo-actions">
+              <button class="btn btn-sm btn-outline-primary" id="scanDemoQrBtn">
+                <i class="fa-solid fa-bolt-lightning"></i> اختبر هذا الـ QR تلقائيًا الآن
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" id="downloadDemoQrBtn">
+                <i class="fa-solid fa-download"></i> تحميل صورة الـ QR للتجربة
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Scan History Section -->
+    <section class="glass-card history-section">
+      <div class="history-header">
+        <h2><i class="fa-solid fa-clock-rotate-left"></i> سجل المسح الأخير (History)</h2>
+        <div class="history-controls">
+          <button class="btn btn-sm btn-outline-danger" id="clearHistoryBtn">
+            <i class="fa-solid fa-trash-can"></i> مسح السجل
+          </button>
+        </div>
+      </div>
+      <div class="history-list-wrapper">
+        <div class="history-empty" id="historyEmpty">
+          لا يوجد عمليات مسح سابقة حتى الآن.
+        </div>
+        <div class="history-list" id="historyList" style="display: none;">
+          <!-- History Items populated dynamically -->
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- QR Display Modal -->
+  <div class="modal" id="qrModal">
+    <div class="modal-content glass-card">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-qrcode"></i> كود الـ QR الجديد</h3>
+        <button class="close-btn" id="closeQrModal"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body text-center">
+        <p class="mb-3">هذا هو الـ QR Code الخاص بالرابط بعد تحويله إلى نطاق Okland:</p>
+        <div id="generatedQrContainer" class="qr-container"></div>
+        <p class="qr-target-url mt-3" id="qrModalUrlText"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="downloadQrBtn"><i class="fa-solid fa-download"></i> تحميل صورة QR</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Audio elements -->
+  <audio id="beepAudio" preload="auto">
+    <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+  </audio>
+
+  <!-- Application logic JS -->
+  <script src="app.js"></script>
+</body>
+</html>
