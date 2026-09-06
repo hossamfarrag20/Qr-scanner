@@ -16,6 +16,8 @@
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <!-- QRCode JS Generator Library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- jsQR High Speed Engine Library -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 </head>
 <body>
   <div class="background-glow">
@@ -112,6 +114,8 @@
           </div>
 
           <div class="reader-wrapper">
+            <video id="cameraVideo" playsinline autoplay muted style="width:100%; height:100%; object-fit:cover; display:none;"></video>
+            <canvas id="scanCanvas" style="display:none;"></canvas>
             <div id="qrReader"></div>
             <div class="scanner-overlay" id="scannerOverlay">
               <div class="scanner-frame">
@@ -121,7 +125,7 @@
                 <div class="corner corner-br"></div>
                 <div class="scan-line"></div>
               </div>
-              <p class="scan-hint">ضع كود الـ QR داخل الإطار للمسح</p>
+              <p class="scan-hint">ضع كود الـ QR داخل الإطار للمسح السريع جداً</p>
             </div>
           </div>
 
