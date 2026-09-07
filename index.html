@@ -18,6 +18,8 @@
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <!-- jsQR High Speed Engine Library -->
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <!-- ZXing High Precision Engine Library -->
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 </head>
 <body>
   <div class="background-glow">
@@ -58,6 +60,9 @@
             </select>
             <button id="torchBtn" class="icon-btn" title="الفلاش / الإضاءة" disabled>
               <i class="fa-solid fa-bolt"></i>
+            </button>
+            <button id="zoomBtn" class="icon-btn" title="التكبير / التقريب (Zoom 2x)" disabled style="display:none;">
+              <i class="fa-solid fa-magnifying-glass-plus"></i>
             </button>
           </div>
 

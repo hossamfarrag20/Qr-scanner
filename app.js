@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     mediaStream: null,
     animFrameId: null,
     barcodeDetector: null,
+    zxingReader: null,
     isCameraScanning: false,
     activeCameraId: null,
     cameras: [],
@@ -31,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Camera Controls & Elements
     cameraSelect: document.getElementById('cameraSelect'),
     torchBtn: document.getElementById('torchBtn'),
+    zoomBtn: document.getElementById('zoomBtn'),
     startCamBtn: document.getElementById('startCamBtn'),
     stopCamBtn: document.getElementById('stopCamBtn'),
     scannerOverlay: document.getElementById('scannerOverlay'),
@@ -63,6 +65,15 @@ document.addEventListener('DOMContentLoaded', () => {
       state.barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
     } catch(e) {
       state.barcodeDetector = null;
+    }
+  }
+
+  // High-Precision ZXing Engine initialization
+  if (window.ZXing && window.ZXing.BrowserQRCodeReader) {
+    try {
+      state.zxingReader = new ZXing.BrowserQRCodeReader();
+    } catch(e) {
+      state.zxingReader = null;
     }
   }
 
@@ -240,8 +251,8 @@ document.addEventListener('DOMContentLoaded', () => {
       video: {
         facingMode: state.activeCameraId ? undefined : { ideal: "environment" },
         deviceId: state.activeCameraId ? { exact: state.activeCameraId } : undefined,
-        width: { ideal: 1280, min: 640 },
-        height: { ideal: 720, min: 480 },
+        width: { ideal: 1920, min: 1280 },
+        height: { ideal: 1080, min: 720 },
         frameRate: { ideal: 30, min: 15 },
         focusMode: { ideal: "continuous" }
       }
@@ -268,6 +279,18 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.torchBtn.style.color = state.torchOn ? '#ff9f1c' : '#ffffff';
           };
         }
+
+        if (videoTrack.getCapabilities && videoTrack.getCapabilities().zoom && elements.zoomBtn) {
+          const caps = videoTrack.getCapabilities().zoom;
+          elements.zoomBtn.style.display = 'inline-flex';
+          elements.zoomBtn.disabled = false;
+          let zoomVal = caps.min || 1;
+          elements.zoomBtn.onclick = () => {
+            zoomVal = zoomVal > (caps.min || 1) ? (caps.min || 1) : Math.min(caps.max || 2.5, (caps.min || 1) * 2);
+            videoTrack.applyConstraints({ advanced: [{ zoom: zoomVal }] }).catch(() => {});
+            elements.zoomBtn.style.color = zoomVal > (caps.min || 1) ? '#00f2fe' : '#ffffff';
+          };
+        }
       }
 
       await elements.cameraVideo.play();
@@ -288,15 +311,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const video = elements.cameraVideo;
     const canvas = elements.scanCanvas;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    let isZxingBusy = false;
 
     async function scanFrame() {
       if (!state.isCameraScanning || !video) return;
 
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      if (video.readyState === video.HAVE_ENOUGH_DATA && !state.isProcessingScan) {
         let detectedResult = null;
 
-        // Engine A: Hardware BarcodeDetector API (Zero CPU overhead)
-        if (state.barcodeDetector && !state.isProcessingScan) {
+        // Engine 1: Native BarcodeDetector API (Zero CPU overhead GPU hardware decoding)
+        if (state.barcodeDetector) {
           try {
             const barcodes = await state.barcodeDetector.detect(video);
             if (barcodes && barcodes.length > 0) {
@@ -305,24 +329,59 @@ document.addEventListener('DOMContentLoaded', () => {
           } catch (e) {}
         }
 
-        // Engine B: Ultra-Fast Downscaled jsQR Engine with Dual Inversion Detection
-        if (!detectedResult && window.jsQR && !state.isProcessingScan) {
-          const videoWidth = video.videoWidth || 640;
-          const videoHeight = video.videoHeight || 480;
+        // Engine 2 & 3: High-Resolution Region Of Interest (ROI) + ZXing / jsQR Engines
+        if (!detectedResult) {
+          const videoWidth = video.videoWidth || 1920;
+          const videoHeight = video.videoHeight || 1080;
 
-          // Scale canvas down to max width 640px for 10x faster execution without resolution loss
-          const scale = Math.min(1, 640 / videoWidth);
-          canvas.width = Math.floor(videoWidth * scale);
-          canvas.height = Math.floor(videoHeight * scale);
+          // Calculate central visual target frame (ROI) from full raw resolution feed
+          const cropSize = Math.floor(Math.min(videoWidth, videoHeight) * 0.70);
+          const cropX = Math.floor((videoWidth - cropSize) / 2);
+          const cropY = Math.floor((videoHeight - cropSize) / 2);
 
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          
-          const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: "attemptBoth"
-          });
-          if (code && code.data) {
-            detectedResult = code.data;
+          canvas.width = cropSize;
+          canvas.height = cropSize;
+          ctx.drawImage(video, cropX, cropY, cropSize, cropSize, 0, 0, cropSize, cropSize);
+
+          // Engine 2: ZXing Engine on High-Res ROI (Handles low contrast, skewed, damaged QRs)
+          if (state.zxingReader && !isZxingBusy) {
+            try {
+              isZxingBusy = true;
+              const result = await state.zxingReader.decodeFromCanvas(canvas);
+              if (result && result.text) {
+                detectedResult = result.text;
+              }
+            } catch(e) {
+              // Expected exception when frame contains no QR code
+            } finally {
+              isZxingBusy = false;
+            }
+          }
+
+          // Engine 3: High-Res jsQR on cropped ROI if ZXing is not available or missed
+          if (!detectedResult && window.jsQR) {
+            const imageData = ctx.getImageData(0, 0, cropSize, cropSize);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: "attemptBoth"
+            });
+            if (code && code.data) {
+              detectedResult = code.data;
+            }
+          }
+
+          // Engine 4: Full-Frame Downscaled Fallback (for wide angle QRs outside central target box)
+          if (!detectedResult && window.jsQR) {
+            const scale = Math.min(1, 640 / videoWidth);
+            canvas.width = Math.floor(videoWidth * scale);
+            canvas.height = Math.floor(videoHeight * scale);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const fullImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const codeFull = jsQR(fullImageData.data, fullImageData.width, fullImageData.height, {
+              inversionAttempts: "attemptBoth"
+            });
+            if (codeFull && codeFull.data) {
+              detectedResult = codeFull.data;
+            }
           }
         }
 
@@ -379,14 +438,17 @@ document.addEventListener('DOMContentLoaded', () => {
       state.mediaStream.getTracks().forEach(track => track.stop());
       state.mediaStream = null;
     }
-    if (state.scanner && state.isCameraScanning) {
-      state.scanner.stop().catch(() => {});
+    if (state.scanner && typeof state.scanner.isScanning === 'boolean' && state.scanner.isScanning) {
+      try {
+        state.scanner.stop().catch(() => {});
+      } catch(e) {}
     }
     state.isCameraScanning = false;
     elements.startCamBtn.style.display = 'inline-flex';
     elements.stopCamBtn.style.display = 'none';
     elements.scannerOverlay.style.display = 'none';
     elements.torchBtn.disabled = true;
+    if (elements.zoomBtn) elements.zoomBtn.disabled = true;
     if (elements.cameraVideo) {
       elements.cameraVideo.style.display = 'none';
     }
@@ -394,7 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ==================== File Scanner Handler ==================== */
-  function handleFileSelect() {
+  async function handleFileSelect() {
     const file = elements.qrFileInput.files[0];
     if (!file) return;
 
@@ -406,15 +468,31 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     reader.readAsDataURL(file);
 
+    let decodedText = null;
+
     if (state.scanner) {
-      state.scanner.scanFile(file, true)
-        .then(decodedText => {
-          handleScanSuccess(decodedText);
-          showToast('تم تحليل الـ QR بنجاح!', 'success');
-        })
-        .catch(() => {
-          showToast('لم يتم العثور على كود QR صالح في الصورة', 'warning');
-        });
+      try {
+        decodedText = await state.scanner.scanFile(file, true);
+      } catch(e) {}
+    }
+
+    if (!decodedText && state.zxingReader) {
+      try {
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+        await img.decode();
+        const result = await state.zxingReader.decodeFromImageElement(img);
+        if (result && result.text) {
+          decodedText = result.text;
+        }
+      } catch(e) {}
+    }
+
+    if (decodedText) {
+      handleScanSuccess(decodedText);
+      showToast('تم تحليل الـ QR بنجاح!', 'success');
+    } else {
+      showToast('لم يتم العثور على كود QR صالح في الصورة', 'warning');
     }
   }
 
