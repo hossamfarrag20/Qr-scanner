@@ -292,6 +292,75 @@ body {
   object-fit: cover;
 }
 
+/* Camera Loader Overlay */
+.camera-loader-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 15;
+  background: rgba(13, 20, 36, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  transition: opacity 0.4s ease, visibility 0.4s ease;
+}
+
+.camera-loader-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.loader-ring-box {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loader-ring {
+  width: 60px;
+  height: 60px;
+  border: 3px solid rgba(255, 159, 28, 0.15);
+  border-top-color: #ff9f1c;
+  border-right-color: #00f2fe;
+  border-radius: 50%;
+  animation: loaderSpin 0.75s linear infinite;
+}
+
+.loader-icon {
+  position: absolute;
+  color: #ff9f1c;
+  font-size: 20px;
+  animation: loaderPulse 1.4s ease-in-out infinite;
+}
+
+.loader-status {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin: 0;
+  text-align: center;
+  letter-spacing: 0.2px;
+}
+
+@keyframes loaderSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes loaderPulse {
+  0%, 100% { transform: scale(1); opacity: 0.75; }
+  50% { transform: scale(1.18); opacity: 1; color: #00f2fe; }
+}
+
 /* Overlay Scanner Animations */
 .scanner-overlay {
   position: absolute;

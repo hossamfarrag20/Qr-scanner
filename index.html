@@ -10,16 +10,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <!-- FontAwesome Icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <!-- CSS Styles -->
-  <link rel="stylesheet" href="styles.css">
-  <!-- HTML5-QRCode Scanner Library -->
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  <!-- jsQR High Speed Engine Library -->
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <!-- ZXing High Precision Engine Library -->
-  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 </head>
 <body>
   <div class="background-glow">
@@ -70,6 +60,16 @@
             <video id="cameraVideo" playsinline autoplay muted style="width:100%; height:100%; object-fit:cover; display:none;"></video>
             <canvas id="scanCanvas" style="display:none;"></canvas>
             <div id="qrReader"></div>
+
+            <!-- Camera Loading Overlay -->
+            <div class="camera-loader-overlay" id="cameraLoader">
+              <div class="loader-ring-box">
+                <div class="loader-ring"></div>
+                <div class="loader-icon"><i class="fa-solid fa-camera-rotate"></i></div>
+              </div>
+              <p class="loader-status" id="loaderStatusText">جاري تحضير الكاميرا والماسح...</p>
+            </div>
+
             <div class="scanner-overlay" id="scannerOverlay">
               <div class="scanner-frame">
                 <div class="corner corner-tl"></div>
@@ -140,6 +140,6 @@
   </audio>
 
   <!-- Application logic JS -->
-  <script src="app.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

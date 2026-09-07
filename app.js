@@ -1,3 +1,9 @@
+import './styles.css';
+import '@fortawesome/fontawesome-free/css/all.min.css';
+import jsQR from 'jsqr';
+import { Html5Qrcode } from 'html5-qrcode';
+import { BrowserQRCodeReader } from '@zxing/library';
+
 /**
  * OKLAND WARRANTY SYSTEM - QR Scanner & Instant Redirect Logic
  */
@@ -39,6 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
     cameraVideo: document.getElementById('cameraVideo'),
     scanCanvas: document.getElementById('scanCanvas'),
     qrReader: document.getElementById('qrReader'),
+    cameraLoader: document.getElementById('cameraLoader'),
+    loaderStatusText: document.getElementById('loaderStatusText'),
 
     // File Upload
     dropzone: document.getElementById('dropzone'),
@@ -69,12 +77,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // High-Precision ZXing Engine initialization
-  if (window.ZXing && window.ZXing.BrowserQRCodeReader) {
-    try {
-      state.zxingReader = new ZXing.BrowserQRCodeReader();
-    } catch(e) {
-      state.zxingReader = null;
-    }
+  try {
+    state.zxingReader = new BrowserQRCodeReader();
+  } catch(e) {
+    state.zxingReader = null;
   }
 
   // Push history state to ensure Back button returns to this scanner page instead of exiting browser
@@ -237,14 +243,32 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    if (window.Html5Qrcode) {
+    if (Html5Qrcode) {
       state.scanner = new Html5Qrcode("qrReader");
+    }
+  }
+
+  /* ==================== Camera Loading Overlay UI ==================== */
+  function showCameraLoader(msg = 'جاري تحضير الكاميرا والماسح...') {
+    if (elements.loaderStatusText) {
+      elements.loaderStatusText.textContent = msg;
+    }
+    if (elements.cameraLoader) {
+      elements.cameraLoader.classList.remove('hidden');
+    }
+  }
+
+  function hideCameraLoader() {
+    if (elements.cameraLoader) {
+      elements.cameraLoader.classList.add('hidden');
     }
   }
 
   /* ==================== High Speed Ultra Scan Engine ==================== */
   async function startCamera() {
-    await stopCamera();
+    showCameraLoader('جاري فتح الكاميرا والماسح...');
+    await stopCamera(false);
+    showCameraLoader('جاري تشغيل فيديو الكاميرا...');
 
     const constraints = {
       audio: false,
@@ -298,6 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.startCamBtn.style.display = 'none';
       elements.stopCamBtn.style.display = 'inline-flex';
       elements.scannerOverlay.style.display = 'flex';
+      hideCameraLoader();
 
       startUltraScanLoop();
 
@@ -359,7 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
 
           // Engine 3: High-Res jsQR on cropped ROI if ZXing is not available or missed
-          if (!detectedResult && window.jsQR) {
+          if (!detectedResult && jsQR) {
             const imageData = ctx.getImageData(0, 0, cropSize, cropSize);
             const code = jsQR(imageData.data, imageData.width, imageData.height, {
               inversionAttempts: "attemptBoth"
@@ -370,7 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
 
           // Engine 4: Full-Frame Downscaled Fallback (for wide angle QRs outside central target box)
-          if (!detectedResult && window.jsQR) {
+          if (!detectedResult && jsQR) {
             const scale = Math.min(1, 640 / videoWidth);
             canvas.width = Math.floor(videoWidth * scale);
             canvas.height = Math.floor(videoHeight * scale);
@@ -424,12 +449,17 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.startCamBtn.style.display = 'none';
       elements.stopCamBtn.style.display = 'inline-flex';
       elements.scannerOverlay.style.display = 'flex';
+      hideCameraLoader();
     }).catch(err => {
+      hideCameraLoader();
       showToast('تعذر فتح الكاميرا: ' + (err.message || err), 'warning');
     });
   }
 
-  function stopCamera() {
+  function stopCamera(shouldHideLoader = true) {
+    if (shouldHideLoader) {
+      hideCameraLoader();
+    }
     if (state.animFrameId) {
       cancelAnimationFrame(state.animFrameId);
       state.animFrameId = null;
@@ -456,6 +486,95 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ==================== File Scanner Handler ==================== */
+  async function decodeImageFile(file) {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    
+    try {
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = objectUrl;
+      });
+
+      // Pass 1: Native BarcodeDetector (GPU hardware decoding for all rotations & scales)
+      if (state.barcodeDetector) {
+        try {
+          const barcodes = await state.barcodeDetector.detect(img);
+          if (barcodes && barcodes.length > 0) {
+            return barcodes[0].rawValue;
+          }
+        } catch(e) {}
+      }
+
+      // Pass 2: Multi-Scale & Multi-Rotation Canvas Pipeline
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+      const scales = [1200, 800, 1600];
+      const rotations = [0, 90, 180, 270];
+
+      const origW = img.naturalWidth || img.width;
+      const origH = img.naturalHeight || img.height;
+
+      for (const targetSize of scales) {
+        const scale = Math.min(1, targetSize / Math.max(origW, origH));
+        const w = Math.floor(origW * scale);
+        const h = Math.floor(origH * scale);
+
+        for (const angle of rotations) {
+          if (angle === 0 || angle === 180) {
+            canvas.width = w;
+            canvas.height = h;
+          } else {
+            canvas.width = h;
+            canvas.height = w;
+          }
+
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.save();
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          ctx.rotate((angle * Math.PI) / 180);
+          ctx.drawImage(img, -w / 2, -h / 2, w, h);
+          ctx.restore();
+
+          // Pass 2A: ZXing on rotated/scaled canvas
+          if (state.zxingReader) {
+            try {
+              const result = await state.zxingReader.decodeFromCanvas(canvas);
+              if (result && result.text) {
+                return result.text;
+              }
+            } catch(e) {}
+          }
+
+          // Pass 2B: jsQR on rotated/scaled canvas
+          if (jsQR) {
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: "attemptBoth"
+            });
+            if (code && code.data) {
+              return code.data;
+            }
+          }
+        }
+      }
+
+      // Pass 3: Html5Qrcode scanFile fallback
+      if (state.scanner) {
+        try {
+          const text = await state.scanner.scanFile(file, true);
+          if (text) return text;
+        } catch(e) {}
+      }
+
+      return null;
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+
   async function handleFileSelect() {
     const file = elements.qrFileInput.files[0];
     if (!file) return;
@@ -468,31 +587,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     reader.readAsDataURL(file);
 
-    let decodedText = null;
+    showToast('جاري تحليل صورة الـ QR وتجربة جهات التعديل والتدوير...', 'info');
 
-    if (state.scanner) {
-      try {
-        decodedText = await state.scanner.scanFile(file, true);
-      } catch(e) {}
-    }
-
-    if (!decodedText && state.zxingReader) {
-      try {
-        const img = new Image();
-        img.src = URL.createObjectURL(file);
-        await img.decode();
-        const result = await state.zxingReader.decodeFromImageElement(img);
-        if (result && result.text) {
-          decodedText = result.text;
-        }
-      } catch(e) {}
-    }
+    const decodedText = await decodeImageFile(file);
 
     if (decodedText) {
       handleScanSuccess(decodedText);
-      showToast('تم تحليل الـ QR بنجاح!', 'success');
+      showToast('تم تحليل الـ QR بنجاح من الصورة!', 'success');
     } else {
-      showToast('لم يتم العثور على كود QR صالح في الصورة', 'warning');
+      showToast('لم يتم العثور على كود QR صالح في الصورة. يرجى التثبت من وضوح الكود.', 'warning');
     }
   }
 
