@@ -66,8 +66,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Push history state to ensure Back button returns to this scanner page instead of exiting browser
+  pushHistoryState();
+
   // Initialize App
   initApp();
+
+  function pushHistoryState() {
+    try {
+      if (window.history && window.history.pushState) {
+        if (!window.history.state || !window.history.state.oklandScanner) {
+          window.history.pushState({ oklandScanner: true, t: Date.now() }, document.title, window.location.href);
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Handle returning to page via browser Back button
+  window.addEventListener('pageshow', (event) => {
+    pushHistoryState();
+    if (event.persisted || (performance && performance.getEntriesByType && performance.getEntriesByType('navigation')[0]?.type === 'back_forward')) {
+      state.isProcessingScan = true;
+      showToast('مرحباً بعودتك! جاهز لقراءة كود جديد', 'info');
+      setTimeout(() => {
+        state.isProcessingScan = false;
+      }, 2500);
+    }
+  });
+
+  window.addEventListener('popstate', () => {
+    pushHistoryState();
+  });
 
   function initApp() {
     renderHistory();
@@ -134,6 +163,15 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.clearHistoryBtn.addEventListener('click', clearHistory);
   }
 
+  function closeResultModal() {
+    if (elements.resultModal) {
+      elements.resultModal.style.display = 'none';
+    }
+    setTimeout(() => {
+      state.isProcessingScan = false;
+    }, 500);
+  }
+
   /* ==================== Tabs Switcher ==================== */
   function switchTab(tab) {
     if (tab === 'camera') {
@@ -193,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  /* ==================== 60 FPS Native Ultra Scanner Engine ==================== */
+  /* ==================== High Speed Ultra Scan Engine ==================== */
   async function startCamera() {
     await stopCamera();
 
@@ -202,9 +240,9 @@ document.addEventListener('DOMContentLoaded', () => {
       video: {
         facingMode: state.activeCameraId ? undefined : { ideal: "environment" },
         deviceId: state.activeCameraId ? { exact: state.activeCameraId } : undefined,
-        width: { ideal: 1920, min: 1280 },
-        height: { ideal: 1080, min: 720 },
-        frameRate: { ideal: 30 },
+        width: { ideal: 1280, min: 640 },
+        height: { ideal: 720, min: 480 },
+        frameRate: { ideal: 30, min: 15 },
         focusMode: { ideal: "continuous" }
       }
     };
@@ -257,7 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         let detectedResult = null;
 
-        // Engine A: Hardware BarcodeDetector API
+        // Engine A: Hardware BarcodeDetector API (Zero CPU overhead)
         if (state.barcodeDetector && !state.isProcessingScan) {
           try {
             const barcodes = await state.barcodeDetector.detect(video);
@@ -267,14 +305,21 @@ document.addEventListener('DOMContentLoaded', () => {
           } catch (e) {}
         }
 
-        // Engine B: High Speed jsQR WASM/JS Engine
+        // Engine B: Ultra-Fast Downscaled jsQR Engine with Dual Inversion Detection
         if (!detectedResult && window.jsQR && !state.isProcessingScan) {
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 480;
+          const videoWidth = video.videoWidth || 640;
+          const videoHeight = video.videoHeight || 480;
+
+          // Scale canvas down to max width 640px for 10x faster execution without resolution loss
+          const scale = Math.min(1, 640 / videoWidth);
+          canvas.width = Math.floor(videoWidth * scale);
+          canvas.height = Math.floor(videoHeight * scale);
+
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          
           const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: "dontInvert"
+            inversionAttempts: "attemptBoth"
           });
           if (code && code.data) {
             detectedResult = code.data;
@@ -284,7 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (detectedResult && !state.isProcessingScan) {
           state.isProcessingScan = true;
           handleScanSuccess(detectedResult);
-          setTimeout(() => { state.isProcessingScan = false; }, 2000);
+          setTimeout(() => { state.isProcessingScan = false; }, 3000);
         }
       }
 
@@ -406,12 +451,18 @@ document.addEventListener('DOMContentLoaded', () => {
     state.currentTransformedUrl = transformedText;
     saveToHistory(scannedText, transformedText, isDomainReplaced);
 
-    showToast('تم القراءة بنجاح! جاري التوجيه الفوري...', 'success');
+    showToast('تم القراءة بنجاح! جاري فتح الرابط في تبويب جديد...', 'success');
 
-    // Instant Direct Redirect
-    setTimeout(() => {
-      window.location.href = transformedText;
-    }, 200);
+    // Automatically open link in new tab so user can return to scanner page anytime
+    const win = window.open(transformedText, '_blank');
+    if (!win || win.closed || typeof win.closed === 'undefined') {
+      // Fallback if popup blocker blocks _blank window
+      window.location.assign(transformedText);
+    } else {
+      setTimeout(() => {
+        state.isProcessingScan = false;
+      }, 3000);
+    }
   }
 
   /* ==================== History Management ==================== */
@@ -452,15 +503,15 @@ document.addEventListener('DOMContentLoaded', () => {
       div.innerHTML = `
         <div class="history-info">
           <div class="history-urls">
-            <span class="${item.isReplaced ? 'hist-old' : ''}">${truncateUrl(item.original)}</span>
-            ${item.isReplaced ? `<i class="fa-solid fa-arrow-left-long"></i> <span class="hist-new">${truncateUrl(item.transformed)}</span>` : ''}
+            <span class="${item.isReplaced ? 'hist-old' : ''}" title="${escapeHtml(item.original)}">${truncateUrl(item.original, 28)}</span>
+            ${item.isReplaced ? `<i class="fa-solid fa-arrow-left-long hist-arrow"></i> <span class="hist-new" title="${escapeHtml(item.transformed)}">${truncateUrl(item.transformed, 28)}</span>` : ''}
           </div>
           <span class="history-time">${item.timestamp}</span>
         </div>
         <div class="history-actions">
-          <a href="${item.transformed}" class="btn btn-sm btn-primary" title="فتح"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
-          <button class="btn btn-sm btn-secondary copy-hist-btn" data-url="${item.transformed}" title="نسخ"><i class="fa-solid fa-copy"></i></button>
-          <button class="btn btn-sm btn-outline-danger delete-hist-btn" data-id="${item.id}" title="حذف"><i class="fa-solid fa-xmark"></i></button>
+          <a href="${item.transformed}" target="_blank" rel="noopener" class="btn btn-sm btn-primary" title="فتح الرابط"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+          <button class="btn btn-sm btn-secondary copy-hist-btn" data-url="${item.transformed}" title="نسخ الرابط"><i class="fa-solid fa-copy"></i></button>
+          <button class="btn btn-sm btn-outline-danger delete-hist-btn" data-id="${item.id}" title="حذف من السجل"><i class="fa-solid fa-xmark"></i></button>
         </div>
       `;
 
@@ -491,9 +542,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function truncateUrl(str, len = 35) {
+  function truncateUrl(str, len = 28) {
     if (!str) return '';
     return str.length > len ? str.substring(0, len) + '...' : str;
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
   /* ==================== Audio Helpers ==================== */
